@@ -1,6 +1,6 @@
 name: Telegram Economic Calendar Alerts
 
-on:
+'on':
 schedule:
 - cron: "*/5 * * * *"
 workflow_dispatch:
