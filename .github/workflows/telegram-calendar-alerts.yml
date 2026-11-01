@@ -1,59 +1,59 @@
 name: Telegram Economic Calendar Alerts
 
 on:
-schedule:
-- cron: "*/5 * * * *"
-workflow_dispatch:
-inputs:
-send_test_message:
-description: "Send a Telegram test message"
-required: false
-type: boolean
-default: false
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      send_test_message:
+        description: "Send a Telegram test message"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-contents: write
+  contents: write
 
 concurrency:
-group: telegram-calendar-alerts
-cancel-in-progress: false
+  group: telegram-calendar-alerts
+  cancel-in-progress: false
 
 jobs:
-run-bot:
-runs-on: ubuntu-latest
-timeout-minutes: 5
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-  - name: Run bot tests
-    run: python -m unittest discover -s tests -v
+      - name: Run bot tests
+        run: python -m unittest discover -s tests -v
 
-  - name: Run economic calendar bot
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHANNEL: "@trading_journal_alert"
-      SEND_TEST_MESSAGE: ${{ inputs.send_test_message }}
-    run: |
-      if [ "$SEND_TEST_MESSAGE" = "true" ]; then
-        python bot.py --test-message
-      else
-        python bot.py
-      fi
+      - name: Run economic calendar bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: "@trading_journal_alert"
+          SEND_TEST_MESSAGE: ${{ inputs.send_test_message }}
+        run: |
+          if [ "$SEND_TEST_MESSAGE" = "true" ]; then
+            python bot.py --test-message
+          else
+            python bot.py
+          fi
 
-  - name: Save alert state
-    if: success()
-    run: |
-      git config user.name "github-actions[bot]"
-      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      git add state/sent_alerts.json
-      if ! git diff --cached --quiet; then
-        git commit -m "Update sent alert state"
-        git push
-      fi
+      - name: Save alert state
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/sent_alerts.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update sent alert state"
+            git push
+          fi
