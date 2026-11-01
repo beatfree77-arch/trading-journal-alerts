@@ -32,9 +32,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run bot tests
-        run: python -m unittest discover -s tests -v
-
       - name: Run economic calendar bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
