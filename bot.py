@@ -99,7 +99,6 @@ IMPACT_STYLES = {
             "Stay sharp. Volatility incoming. 🚀"
         ),
     },
-
     "medium": {
         "title": "🟢 MEDIUM IMPACT ECONOMIC ALERT 🟢",
         "footer": (
@@ -107,7 +106,6 @@ IMPACT_STYLES = {
             "Stay focused. Watch for market movements. 📈"
         ),
     },
-
     "low": {
         "title": "🔵 LOW IMPACT ECONOMIC ALERT 🔵",
         "footer": (
@@ -115,7 +113,6 @@ IMPACT_STYLES = {
             "Stay informed. Keep an eye on the markets. 👀"
         ),
     },
-
     "holiday": {
         "title": "⚪ ECONOMIC HOLIDAY ALERT ⚪",
         "footer": (
@@ -156,7 +153,6 @@ class StateError(BotError):
 
 @dataclass(frozen=True)
 class CalendarEvent:
-
     currency: str
     name: str
     impact: str
@@ -168,7 +164,6 @@ class CalendarEvent:
 
     @property
     def identity(self) -> str:
-
         stable_fields = (
             self.source_id
             or (
@@ -177,7 +172,6 @@ class CalendarEvent:
                 f"{self.event_time.isoformat()}"
             )
         )
-
         return hashlib.sha256(
             stable_fields.encode("utf-8")
         ).hexdigest()
@@ -185,7 +179,6 @@ class CalendarEvent:
 
 @dataclass(frozen=True)
 class RunSummary:
-
     due: int
     sent: int
     failed: int
@@ -197,24 +190,19 @@ class RunSummary:
 # ============================================================
 
 def normalize_impact(impact: str) -> str:
-
     value = impact.strip().lower()
 
     aliases = {
         "high impact": "high",
         "medium impact": "medium",
         "low impact": "low",
-
         "élevée": "high",
         "elevee": "high",
         "élevé": "high",
         "eleve": "high",
-
         "moyenne": "medium",
         "moyen": "medium",
-
         "faible": "low",
-
         "non-economic": "holiday",
         "non economic": "holiday",
     }
@@ -227,90 +215,51 @@ def normalize_impact(impact: str) -> str:
 # ============================================================
 
 def parse_event(row: Any) -> CalendarEvent | None:
-
     if not isinstance(row, dict):
         return None
 
-    currency = _field_text(
-        row.get("currency")
-    ).upper()
+    currency = _field_text(row.get("currency")).upper()
 
     if not currency:
-
-        country_code = _field_text(
-            row.get("countryCode")
-        ).upper()
-
-        currency = COUNTRY_CURRENCIES.get(
-            country_code,
-            ""
-        )
+        country_code = _field_text(row.get("countryCode")).upper()
+        currency = COUNTRY_CURRENCIES.get(country_code, "")
 
     if currency not in SUPPORTED_CURRENCIES:
         return None
 
     name = _field_text(row.get("name"))
-
     raw_time = _field_text(row.get("time"))
 
     if not name or not raw_time:
         return None
 
     try:
-
         event_time = datetime.fromisoformat(
             raw_time.replace("Z", "+00:00")
         )
-
     except ValueError:
         return None
 
-    if (
-        event_time.tzinfo is None
-        or event_time.utcoffset() is None
-    ):
+    if event_time.tzinfo is None or event_time.utcoffset() is None:
         return None
 
-    source_id = _field_text(
-        row.get("id")
-    )
-
-    time_mode = _field_text(
-        row.get("timeMode")
-    ).lower()
+    source_id = _field_text(row.get("id"))
+    time_mode = _field_text(row.get("timeMode")).lower()
 
     return CalendarEvent(
-
         currency=currency,
-
         name=name,
-
-        impact=normalize_impact(
-            _field_text(row.get("importance"))
-        ),
-
-        forecast=_field_text(
-            row.get("forecast")
-        ),
-
-        previous=_field_text(
-            row.get("previous")
-        ),
-
-        event_time=event_time.astimezone(
-            timezone.utc
-        ),
-
+        impact=normalize_impact(_field_text(row.get("importance"))),
+        forecast=_field_text(row.get("forecast")),
+        previous=_field_text(row.get("previous")),
+        event_time=event_time.astimezone(timezone.utc),
         source_id=source_id,
-
         time_mode=time_mode,
     )
 
 
 def parse_calendar(payload: Any) -> list[CalendarEvent]:
-
     if isinstance(payload, dict):
-
         payload = (
             payload.get("events")
             or payload.get("data")
@@ -318,42 +267,26 @@ def parse_calendar(payload: Any) -> list[CalendarEvent]:
         )
 
     if not isinstance(payload, list):
-
         raise CalendarFeedError(
             "Biquote did not return a valid JSON event list."
         )
 
     events = []
-
     invalid_rows = 0
 
     for row in payload:
-
         event = parse_event(row)
 
         if event is not None:
-
             events.append(event)
-
         elif isinstance(row, dict):
+            currency = _field_text(row.get("currency")).upper()
+            country = _field_text(row.get("countryCode")).upper()
 
-            currency = _field_text(
-                row.get("currency")
-            ).upper()
-
-            country = _field_text(
-                row.get("countryCode")
-            ).upper()
-
-            if (
-                currency in SUPPORTED_CURRENCIES
-                or country in COUNTRY_CURRENCIES
-            ):
-
+            if currency in SUPPORTED_CURRENCIES or country in COUNTRY_CURRENCIES:
                 invalid_rows += 1
 
     if invalid_rows:
-
         LOGGER.warning(
             "Skipped %d invalid supported-currency event(s).",
             invalid_rows,
@@ -366,23 +299,12 @@ def parse_calendar(payload: Any) -> list[CalendarEvent]:
 # FETCH CALENDAR
 # ============================================================
 
-def _retry_delay(
-    attempt: int,
-    retry_after: str | None = None,
-) -> float:
-
+def _retry_delay(attempt: int, retry_after: str | None = None) -> float:
     if retry_after:
-
         try:
-
-            return min(
-                max(float(retry_after), 0.0),
-                8.0
-            )
-
+            return min(max(float(retry_after), 0.0), 8.0)
         except ValueError:
             pass
-
     return min(2 ** attempt, 8)
 
 
@@ -392,49 +314,28 @@ def fetch_calendar(
 ) -> list[CalendarEvent]:
 
     request = Request(
-
         CALENDAR_URL,
-
         headers={
             "Accept": "application/json",
             "User-Agent": "FOREX-FACTORY-JOURNAL/1.0",
         },
     )
 
-    retryable_statuses = {
-        429, 500, 502, 503, 504
-    }
+    retryable_statuses = {429, 500, 502, 503, 504}
 
     for attempt in range(4):
-
         try:
-
-            with opener(
-                request,
-                timeout=15
-            ) as response:
-
-                body = response.read(
-                    MAX_CALENDAR_BYTES + 1
-                )
+            with opener(request, timeout=15) as response:
+                body = response.read(MAX_CALENDAR_BYTES + 1)
 
             if len(body) > MAX_CALENDAR_BYTES:
-
                 raise CalendarFeedError(
                     "Biquote response exceeded the size limit."
                 )
 
             try:
-
-                payload = json.loads(
-                    body.decode("utf-8")
-                )
-
-            except (
-                UnicodeDecodeError,
-                json.JSONDecodeError
-            ):
-
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
                 raise CalendarFeedError(
                     "Biquote returned invalid JSON."
                 ) from None
@@ -442,12 +343,7 @@ def fetch_calendar(
             return parse_calendar(payload)
 
         except HTTPError as exc:
-
-            if (
-                exc.code not in retryable_statuses
-                or attempt == 3
-            ):
-
+            if exc.code not in retryable_statuses or attempt == 3:
                 raise CalendarFeedError(
                     f"Biquote returned HTTP {exc.code}."
                 ) from None
@@ -456,29 +352,14 @@ def fetch_calendar(
                 exc.headers.get("Retry-After")
                 if exc.headers else None
             )
+            sleeper(_retry_delay(attempt, retry_after))
 
-            sleeper(
-                _retry_delay(
-                    attempt,
-                    retry_after
-                )
-            )
-
-        except (
-            URLError,
-            TimeoutError,
-            OSError
-        ):
-
+        except (URLError, TimeoutError, OSError):
             if attempt == 3:
-
                 raise CalendarFeedError(
                     "Biquote could not be reached after retries."
                 ) from None
-
-            sleeper(
-                _retry_delay(attempt)
-            )
+            sleeper(_retry_delay(attempt))
 
     raise CalendarFeedError(
         "Biquote could not be reached after retries."
@@ -494,33 +375,21 @@ def due_reminders(
     now: datetime,
 ) -> list[tuple[CalendarEvent, int]]:
 
-    if (
-        now.tzinfo is None
-        or now.utcoffset() is None
-    ):
-
-        raise ValueError(
-            "now must include a timezone"
-        )
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must include a timezone")
 
     now_utc = now.astimezone(timezone.utc)
-
     due = []
 
     for event in events:
-
         if event.time_mode != "exact":
             continue
-
         if event.impact not in ALLOWED_IMPACTS:
             continue
 
-        seconds_until_event = (
-            event.event_time - now_utc
-        ).total_seconds()
+        seconds_until_event = (event.event_time - now_utc).total_seconds()
 
         for lead_minutes in REMINDER_MINUTES:
-
             target_seconds = lead_minutes * 60
 
             if (
@@ -528,10 +397,7 @@ def due_reminders(
                 <= seconds_until_event
                 < target_seconds + ALERT_TOLERANCE_SECONDS
             ):
-
-                due.append(
-                    (event, lead_minutes)
-                )
+                due.append((event, lead_minutes))
 
     return due
 
@@ -540,17 +406,9 @@ def due_reminders(
 # MESSAGE FORMATTING
 # ============================================================
 
-def format_event_time(
-    event_time: datetime
-) -> str:
-
-    utc_time = event_time.astimezone(
-        timezone.utc
-    )
-
-    return utc_time.strftime(
-        "%H:%M UTC"
-    )
+def format_event_time(event_time: datetime) -> str:
+    utc_time = event_time.astimezone(timezone.utc)
+    return utc_time.strftime("%H:%M UTC")
 
 
 def format_message(
@@ -560,39 +418,416 @@ def format_message(
 
     style = IMPACT_STYLES.get(
         event.impact,
-
         {
             "title": "📢 ECONOMIC CALENDAR ALERT 📢",
-
-            "footer": (
-                "Stay informed. Follow the market carefully."
-            ),
+            "footer": "Stay informed. Follow the market carefully.",
         },
     )
 
-    flag = CURRENCY_FLAGS.get(
-        event.currency,
-        "🌍"
-    )
-
-    forecast = (
-        event.forecast
-        or "Not available"
-    )
-
-    previous = (
-        event.previous
-        or "Not available"
-    )
+    flag = CURRENCY_FLAGS.get(event.currency, "🌍")
+    forecast = event.forecast or "Not available"
+    previous = event.previous or "Not available"
 
     return (
-
         f"{style['title']}\n\n"
-
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-
         f"💱 Currency: {flag} {event.currency}\n"
-
         f"📊 Event: {event.name}\n\n"
+        f"⏳ Reminder: {lead_minutes} minutes\n"
+        f"🕒 Event Time: {format_event_time(event.event_time)}\n\n"
+        f"♻️ Forecast: {forecast}\n"
+        f"♻️ Previous: {previous}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{style['footer']}"
+    )
 
-       
+
+# ============================================================
+# TEST MESSAGE
+# ============================================================
+
+def format_test_message(channel: str | None = None) -> str:
+    target = (
+        channel
+        or os.environ.get("TELEGRAM_CHANNEL")
+        or DEFAULT_CHANNEL
+    ).strip()
+
+    return (
+        "Telegram bot test message\n"
+        "This confirms the bot can publish to the configured channel.\n"
+        f"Channel: {target}\n"
+        "No economic event is being reported."
+    )
+
+
+# ============================================================
+# DUPLICATE PROTECTION
+# ============================================================
+
+def alert_key(event: CalendarEvent, lead_minutes: int) -> str:
+    return f"{event.identity}:{lead_minutes}"
+
+
+# ============================================================
+# STATE MANAGEMENT
+# ============================================================
+
+def load_state(path: Path) -> dict[str, str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError):
+        raise StateError(
+            "The saved alert state could not be read."
+        ) from None
+
+    sent = raw.get("sent") if isinstance(raw, dict) else None
+
+    if not isinstance(sent, dict):
+        raise StateError(
+            "The saved alert state has an invalid format."
+        )
+
+    if not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in sent.items()
+    ):
+        raise StateError(
+            "The saved alert state contains invalid entries."
+        )
+
+    return sent
+
+
+def save_state(path: Path, sent: dict[str, str]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        temporary_path = path.with_suffix(path.suffix + ".tmp")
+
+        data = (
+            json.dumps(
+                {"sent": sent},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
+        temporary_path.write_text(data, encoding="utf-8")
+        temporary_path.replace(path)
+
+    except OSError:
+        raise StateError(
+            "The sent-alert state could not be saved."
+        ) from None
+
+
+def prune_state(sent: dict[str, str], now: datetime) -> dict[str, str]:
+    cutoff = now.astimezone(timezone.utc) - timedelta(days=14)
+    pruned = {}
+
+    for key, value in sent.items():
+        try:
+            recorded_at = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            )
+        except ValueError:
+            continue
+
+        if (
+            recorded_at.tzinfo is not None
+            and recorded_at.astimezone(timezone.utc) >= cutoff
+        ):
+            pruned[key] = value
+
+    return pruned
+
+
+# ============================================================
+# TELEGRAM DELIVERY
+# ============================================================
+
+def send_telegram_message(
+    text: str,
+    channel: str | None = None,
+    opener: Callable[..., Any] = urlopen,
+) -> None:
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+
+    if not token:
+        raise BotError("TELEGRAM_BOT_TOKEN is not set.")
+
+    target = (
+        channel
+        or os.environ.get("TELEGRAM_CHANNEL")
+        or DEFAULT_CHANNEL
+    ).strip()
+
+    if not target:
+        raise BotError("TELEGRAM_CHANNEL cannot be empty.")
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    from urllib.parse import urlencode
+
+    body = urlencode({
+        "chat_id": target,
+        "text": text,
+        "disable_web_page_preview": "true",
+    }).encode("utf-8")
+
+    request = Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        method="POST",
+    )
+
+    try:
+        with opener(request, timeout=15) as response:
+            response_body = response.read(MAX_TELEGRAM_RESPONSE_BYTES + 1)
+            status = getattr(response, "status", 200)
+
+    except HTTPError as exc:
+        raise TelegramDeliveryError(
+            f"Telegram returned HTTP {exc.code}."
+        ) from None
+
+    except (URLError, TimeoutError, OSError):
+        raise TelegramDeliveryError(
+            "Telegram could not be reached or timed out."
+        ) from None
+
+    if len(response_body) > MAX_TELEGRAM_RESPONSE_BYTES:
+        raise TelegramDeliveryError(
+            "Telegram returned an oversized response."
+        )
+
+    if status < 200 or status >= 300:
+        raise TelegramDeliveryError(
+            f"Telegram returned HTTP {status}."
+        )
+
+    try:
+        result = json.loads(response_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise TelegramDeliveryError(
+            "Telegram returned an invalid response."
+        ) from None
+
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise TelegramDeliveryError(
+            "Telegram did not confirm the message."
+        )
+
+
+# ============================================================
+# MAIN BOT EXECUTION
+# ============================================================
+
+def run_once(
+    now: datetime | None = None,
+    events: list[CalendarEvent] | None = None,
+    state_path: Path = DEFAULT_STATE_PATH,
+    sender: Callable[[str], None] = send_telegram_message,
+) -> RunSummary:
+
+    if now is not None and (
+        now.tzinfo is None or now.utcoffset() is None
+    ):
+        raise ValueError("now must include a timezone")
+
+    run_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+
+    calendar_events = (
+        events if events is not None else fetch_calendar()
+    )
+
+    reminders = due_reminders(calendar_events, run_time)
+
+    sent_state = prune_state(load_state(state_path), run_time)
+
+    sent_count = 0
+    failed_count = 0
+    duplicate_count = 0
+
+    for event, lead_minutes in reminders:
+        key = alert_key(event, lead_minutes)
+
+        if key in sent_state:
+            duplicate_count += 1
+            continue
+
+        try:
+            sender(format_message(event, lead_minutes))
+        except BotError as exc:
+            LOGGER.warning("Alert delivery failed: %s", exc)
+            failed_count += 1
+            continue
+        except Exception as exc:
+            LOGGER.warning(
+                "Alert delivery failed (%s).",
+                type(exc).__name__
+            )
+            failed_count += 1
+            continue
+
+        sent_state[key] = run_time.isoformat()
+        save_state(state_path, sent_state)
+        sent_count += 1
+
+    return RunSummary(
+        due=len(reminders),
+        sent=sent_count,
+        failed=failed_count,
+        already_sent=duplicate_count,
+    )
+
+
+# ============================================================
+# CALENDAR DIAGNOSTICS
+# ============================================================
+
+def check_calendar(events: list[CalendarEvent]) -> None:
+    print("\n========== BIQUOTE CALENDAR TEST ==========\n")
+    print(f"Total supported events: {len(events)}")
+
+    currencies = Counter(event.currency for event in events)
+    print("\nCURRENCY COVERAGE:")
+    for currency in sorted(SUPPORTED_CURRENCIES):
+        print(f"{currency}: {currencies.get(currency, 0)} events")
+
+    impacts = Counter(event.impact for event in events)
+    print("\nIMPACT LEVELS:")
+    for impact in ("high", "medium", "low", "holiday"):
+        print(f"{impact}: {impacts.get(impact, 0)}")
+
+    time_modes = Counter(event.time_mode for event in events)
+    print("\nTIME MODES:")
+    for mode, count in sorted(time_modes.items()):
+        print(f"{mode or 'missing'}: {count}")
+
+    print("\nNEXT 20 EVENTS:")
+    now = datetime.now(timezone.utc)
+
+    upcoming = sorted(
+        (event for event in events if event.event_time >= now),
+        key=lambda event: event.event_time
+    )
+
+    for event in upcoming[:20]:
+        print("-" * 55)
+        print(f"Currency: {event.currency}")
+        print(f"Event: {event.name}")
+        print(f"Impact: {event.impact}")
+        print(f"Time: {event.event_time.isoformat()}")
+        print(f"Time mode: {event.time_mode}")
+
+    print("\n========== END OF TEST ==========\n")
+
+
+# ============================================================
+# COMMAND LINE
+# ============================================================
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    modes = parser.add_mutually_exclusive_group()
+
+    modes.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check alerts without sending Telegram messages."
+    )
+    modes.add_argument(
+        "--test-message",
+        action="store_true",
+        help="Send one Telegram test message."
+    )
+    modes.add_argument(
+        "--check-calendar",
+        action="store_true",
+        help="Inspect Biquote data without sending messages."
+    )
+
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s"
+    )
+
+    if (
+        not args.dry_run
+        and not args.check_calendar
+        and not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    ):
+        LOGGER.error("TELEGRAM_BOT_TOKEN is not set.")
+        return 2
+
+    if args.test_message:
+        try:
+            send_telegram_message(format_test_message())
+        except BotError as exc:
+            LOGGER.error("%s", exc)
+            return 1
+
+        LOGGER.info("Telegram accepted the test message.")
+        return 0
+
+    try:
+        events = fetch_calendar()
+    except CalendarFeedError as exc:
+        LOGGER.error("%s", exc)
+        return 1
+
+    if args.check_calendar:
+        check_calendar(events)
+        return 0
+
+    current_time = datetime.now(timezone.utc)
+
+    if args.dry_run:
+        reminders = due_reminders(events, current_time)
+
+        if not reminders:
+            print(
+                f"Calendar loaded ({len(events)} events); "
+                "no alerts are due now."
+            )
+        else:
+            print(f"Dry run: {len(reminders)} alert(s) would be sent:")
+            for event, lead_minutes in reminders:
+                print("-" * 60)
+                print(format_message(event, lead_minutes))
+
+        return 0
+
+    try:
+        summary = run_once(now=current_time, events=events)
+    except StateError as exc:
+        LOGGER.error("%s", exc)
+        return 1
+
+    LOGGER.info(
+        "Checked %d supported-currency events; "
+        "due=%d, sent=%d, already sent=%d, failed=%d.",
+        len(events),
+        summary.due,
+        summary.sent,
+        summary.already_sent,
+        summary.failed,
+    )
+
+    return 1 if summary.failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
