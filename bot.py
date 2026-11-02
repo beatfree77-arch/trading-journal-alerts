@@ -196,15 +196,24 @@ def normalize_impact(impact: str) -> str:
         "high impact": "high",
         "medium impact": "medium",
         "low impact": "low",
+
         "élevée": "high",
         "elevee": "high",
         "élevé": "high",
         "eleve": "high",
+
         "moyenne": "medium",
         "moyen": "medium",
+
         "faible": "low",
+
+        "none": "holiday",
+        "no impact": "holiday",
         "non-economic": "holiday",
         "non economic": "holiday",
+        "holiday": "holiday",
+        "bank holiday": "holiday",
+        "public holiday": "holiday",
     }
 
     return aliases.get(value, value)
