@@ -317,9 +317,8 @@ def due_reminders(
 
         for lead_minutes in REMINDER_MINUTES:
             target_seconds = lead_minutes * 60
-            if abs(seconds_until_event - target_seconds) <= ALERT_TOLERANCE_SECONDS:
-                due.append((event, lead_minutes))
-
+            if target_seconds - ALERT_TOLERANCE_SECONDS <= seconds_until_event < target_seconds + ALERT_TOLERANCE_SECONDS:
+    due.append((event, lead_minutes))
     return due
 
 
