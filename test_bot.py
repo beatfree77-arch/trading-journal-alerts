@@ -33,12 +33,12 @@ class ReminderTests(unittest.TestCase):
             time_mode=time_mode,
         )
 
-    def test_t15_reminder(self):
-        event = self.make_event(15)
+    def test_t10_reminder(self):
+        event = self.make_event(10)
         reminders = due_reminders([event], self.now)
 
         self.assertEqual(len(reminders), 1)
-        self.assertEqual(reminders[0][1], 15)
+        self.assertEqual(reminders[0][1], 10)
 
     def test_t5_reminder(self):
         event = self.make_event(5)
@@ -46,6 +46,18 @@ class ReminderTests(unittest.TestCase):
 
         self.assertEqual(len(reminders), 1)
         self.assertEqual(reminders[0][1], 5)
+
+    def test_overlapping_windows_choose_closest_reminder(self):
+        event = self.make_event(7)
+        reminders = due_reminders([event], self.now)
+
+        self.assertEqual(reminders, [(event, 5)])
+
+    def test_overlapping_window_tie_prefers_earlier_reminder(self):
+        event = self.make_event(7.5)
+        reminders = due_reminders([event], self.now)
+
+        self.assertEqual(reminders, [(event, 10)])
 
     def test_tentative_event_is_ignored(self):
         event = self.make_event(15, "tentative")
@@ -60,7 +72,7 @@ class ReminderTests(unittest.TestCase):
         self.assertEqual(len(reminders), 0)
 
     def test_duplicate_alert_is_not_sent_twice(self):
-        event = self.make_event(15)
+        event = self.make_event(10)
 
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "sent_alerts.json"
@@ -104,33 +116,33 @@ class MessageFormattingTests(unittest.TestCase):
         )
 
     def test_high_impact_title(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
         self.assertIn("HIGH IMPACT", message)
 
     def test_currency_and_flag(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
         self.assertIn("🇺🇸 USD", message)
 
     def test_event_name(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
         self.assertIn("JOLTS Job Openings", message)
 
     def test_forecast_and_previous(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
         self.assertIn("7.2M", message)
         self.assertIn("7.1M", message)
 
     def test_countdown(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
-        self.assertIn("15 minutes", message)
+        self.assertIn("10 minutes", message)
 
     def test_event_time(self):
-        message = format_message(self.event, 15)
+        message = format_message(self.event, 10)
 
         self.assertIn("15:00 UTC", message)
 

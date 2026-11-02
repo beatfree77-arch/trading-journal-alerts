@@ -39,7 +39,7 @@ ALLOWED_IMPACTS = frozenset({
     "high", "medium", "low", "holiday"
 })
 
-REMINDER_MINUTES = (15, 5)
+REMINDER_MINUTES = (10, 5)
 
 ALERT_TOLERANCE_SECONDS = 300
 
@@ -398,6 +398,8 @@ def due_reminders(
 
         seconds_until_event = (event.event_time - now_utc).total_seconds()
 
+        matching_leads = []
+
         for lead_minutes in REMINDER_MINUTES:
             target_seconds = lead_minutes * 60
 
@@ -406,7 +408,19 @@ def due_reminders(
                 <= seconds_until_event
                 < target_seconds + ALERT_TOLERANCE_SECONDS
             ):
-                due.append((event, lead_minutes))
+                matching_leads.append(lead_minutes)
+
+        if matching_leads:
+            # Nearby reminder windows can overlap (for example 10 and 5
+            # minutes with a five-minute tolerance). Send only the closest
+            # reminder so one run cannot emit both messages at once.
+            lead_minutes = min(
+                matching_leads,
+                key=lambda lead: abs(
+                    seconds_until_event - lead * 60
+                ),
+            )
+            due.append((event, lead_minutes))
 
     return due
 

@@ -2,7 +2,8 @@ name: Telegram Economic Calendar Alerts
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # Run every five minutes, offset from the busy start of the hour.
+    - cron: "2-57/5 * * * *"
 
   workflow_dispatch:
     inputs:
