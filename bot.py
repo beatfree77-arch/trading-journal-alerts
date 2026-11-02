@@ -31,13 +31,12 @@ SUPPORTED_CURRENCIES = frozenset({
     "AUD", "NZD", "CAD", "CHF",
 })
 
-# All four impact categories are enabled.
 ALLOWED_IMPACTS = frozenset({
     "high", "medium", "low", "holiday"
 })
 
 REMINDER_MINUTES = (15, 5)
-ALERT_TOLERANCE_SECONDS = 210
+ALERT_TOLERANCE_SECONDS = 300  # 5 minutes de tolérance
 
 DEFAULT_CHANNEL = "@trading_journal_alert"
 DEFAULT_STATE_PATH = Path(__file__).parent / "state" / "sent_alerts.json"
@@ -142,9 +141,13 @@ class CalendarEvent:
         stable_fields = (
             self.currency,
             self.name,
-            self.event_time.astimezone(timezone.utc).isoformat(timespec="seconds"),
+            self.event_time.astimezone(timezone.utc).isoformat(
+                timespec="seconds"
+            ),
         )
-        return hashlib.sha256("|".join(stable_fields).encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            "|".join(stable_fields).encode("utf-8")
+        ).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -170,11 +173,14 @@ def parse_event(row: Any) -> CalendarEvent | None:
 
     name = _field_text(row.get("title"))
     raw_time = _field_text(row.get("date"))
+
     if not name or not raw_time:
         return None
 
     try:
-        event_time = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+        event_time = datetime.fromisoformat(
+            raw_time.replace("Z", "+00:00")
+        )
     except ValueError:
         return None
 
@@ -193,17 +199,22 @@ def parse_event(row: Any) -> CalendarEvent | None:
 
 def parse_calendar(payload: Any) -> list[CalendarEvent]:
     if not isinstance(payload, list):
-        raise CalendarFeedError("The calendar feed did not return a JSON list.")
+        raise CalendarFeedError(
+            "The calendar feed did not return a JSON list."
+        )
 
     events: list[CalendarEvent] = []
     invalid_rows = 0
 
     for row in payload:
         event = parse_event(row)
+
         if event is not None:
             events.append(event)
+
         elif isinstance(row, dict):
             currency = _field_text(row.get("country")).upper()
+
             if currency in SUPPORTED_CURRENCIES:
                 invalid_rows += 1
 
@@ -220,12 +231,16 @@ def parse_calendar(payload: Any) -> list[CalendarEvent]:
 # FETCH CALENDAR
 # ============================================================
 
-def _retry_delay(attempt: int, retry_after: str | None = None) -> float:
+def _retry_delay(
+    attempt: int,
+    retry_after: str | None = None,
+) -> float:
     if retry_after:
         try:
             return min(max(float(retry_after), 0.0), 8.0)
         except ValueError:
             pass
+
     return min(2**attempt, 8)
 
 
@@ -233,6 +248,7 @@ def fetch_calendar(
     opener: Callable[..., Any] = urlopen,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> list[CalendarEvent]:
+
     request = Request(
         CALENDAR_URL,
         headers={
@@ -268,7 +284,11 @@ def fetch_calendar(
                     f"The calendar feed returned HTTP {exc.code}."
                 ) from None
 
-            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            retry_after = (
+                exc.headers.get("Retry-After")
+                if exc.headers else None
+            )
+
             sleeper(_retry_delay(attempt, retry_after))
 
         except (URLError, TimeoutError, OSError):
@@ -276,6 +296,7 @@ def fetch_calendar(
                 raise CalendarFeedError(
                     "The calendar feed could not be reached after retries."
                 ) from None
+
             sleeper(_retry_delay(attempt))
 
     raise CalendarFeedError(
@@ -289,6 +310,7 @@ def fetch_calendar(
 
 def normalize_impact(impact: str) -> str:
     value = impact.strip().lower()
+
     aliases = {
         "high impact": "high",
         "medium impact": "medium",
@@ -296,6 +318,7 @@ def normalize_impact(impact: str) -> str:
         "non-economic": "holiday",
         "non economic": "holiday",
     }
+
     return aliases.get(value, value)
 
 
@@ -303,6 +326,7 @@ def due_reminders(
     events: list[CalendarEvent],
     now: datetime,
 ) -> list[tuple[CalendarEvent, int]]:
+
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must include a timezone")
 
@@ -310,16 +334,29 @@ def due_reminders(
     due: list[tuple[CalendarEvent, int]] = []
 
     for event in events:
+
         if normalize_impact(event.impact) not in ALLOWED_IMPACTS:
             continue
 
-        seconds_until_event = (event.event_time - now_utc).total_seconds()
+        seconds_until_event = (
+            event.event_time - now_utc
+        ).total_seconds()
 
         for lead_minutes in REMINDER_MINUTES:
+
             target_seconds = lead_minutes * 60
-            if target_seconds - ALERT_TOLERANCE_SECONDS <= seconds_until_event < target_seconds + ALERT_TOLERANCE_SECONDS:
-    due.append((event, lead_minutes))
-    
+
+            # Fenêtres distinctes :
+            # la limite supérieure est exclusive pour éviter
+            # le chevauchement entre les rappels de 15 et 5 minutes.
+
+            if (
+                target_seconds - ALERT_TOLERANCE_SECONDS
+                <= seconds_until_event
+                < target_seconds + ALERT_TOLERANCE_SECONDS
+            ):
+                due.append((event, lead_minutes))
+
     return due
 
 
@@ -332,8 +369,13 @@ def format_event_time(event_time: datetime) -> str:
     return utc_time.strftime("%H:%M UTC")
 
 
-def format_message(event: CalendarEvent, lead_minutes: int) -> str:
+def format_message(
+    event: CalendarEvent,
+    lead_minutes: int,
+) -> str:
+
     impact_key = normalize_impact(event.impact)
+
     style = IMPACT_STYLES.get(
         impact_key,
         {
@@ -353,8 +395,8 @@ def format_message(event: CalendarEvent, lead_minutes: int) -> str:
         f"📊 Event: {event.name}\n\n"
         f"⏳ Reminder: {lead_minutes} minutes\n"
         f"🕒 Event Time: {format_event_time(event.event_time)}\n\n"
-        f"🟩 Forecast: {forecast}\n"
-        f"🟥 Previous: {previous}\n\n"
+        f"♻️ Forecast: {forecast}\n"
+        f"♻️ Previous: {previous}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"{style['footer']}"
     )
@@ -364,7 +406,10 @@ def format_message(event: CalendarEvent, lead_minutes: int) -> str:
 # TEST MESSAGE
 # ============================================================
 
-def format_test_message(channel: str | None = None) -> str:
+def format_test_message(
+    channel: str | None = None,
+) -> str:
+
     target = (
         channel
         or os.environ.get("TELEGRAM_CHANNEL")
@@ -383,7 +428,11 @@ def format_test_message(channel: str | None = None) -> str:
 # DUPLICATE PROTECTION
 # ============================================================
 
-def alert_key(event: CalendarEvent, lead_minutes: int) -> str:
+def alert_key(
+    event: CalendarEvent,
+    lead_minutes: int,
+) -> str:
+
     return f"{event.identity}:{lead_minutes}"
 
 
@@ -392,10 +441,13 @@ def alert_key(event: CalendarEvent, lead_minutes: int) -> str:
 # ============================================================
 
 def load_state(path: Path) -> dict[str, str]:
+
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+
     except FileNotFoundError:
         return {}
+
     except (OSError, json.JSONDecodeError):
         raise StateError(
             "The saved alert state could not be read; "
@@ -403,34 +455,67 @@ def load_state(path: Path) -> dict[str, str]:
         ) from None
 
     sent = raw.get("sent") if isinstance(raw, dict) else None
+
     if not isinstance(sent, dict) or not all(
         isinstance(key, str) and isinstance(value, str)
         for key, value in sent.items()
     ):
-        raise StateError("The saved alert state has an invalid format.")
+        raise StateError(
+            "The saved alert state has an invalid format."
+        )
 
     return sent
 
 
-def save_state(path: Path, sent: dict[str, str]) -> None:
+def save_state(
+    path: Path,
+    sent: dict[str, str],
+) -> None:
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_suffix(path.suffix + ".tmp")
 
-        data = json.dumps({"sent": sent}, indent=2, sort_keys=True) + "\n"
-        temporary_path.write_text(data, encoding="utf-8")
+        temporary_path = path.with_suffix(
+            path.suffix + ".tmp"
+        )
+
+        data = (
+            json.dumps(
+                {"sent": sent},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
+        temporary_path.write_text(
+            data,
+            encoding="utf-8",
+        )
+
         temporary_path.replace(path)
+
     except OSError:
-        raise StateError("The sent-alert state could not be saved.") from None
+        raise StateError(
+            "The sent-alert state could not be saved."
+        ) from None
 
 
-def prune_state(sent: dict[str, str], now: datetime) -> dict[str, str]:
+def prune_state(
+    sent: dict[str, str],
+    now: datetime,
+) -> dict[str, str]:
+
     cutoff = now.astimezone(timezone.utc) - timedelta(days=14)
     pruned: dict[str, str] = {}
 
     for key, value in sent.items():
+
         try:
-            recorded_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            recorded_at = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            )
+
         except ValueError:
             continue
 
@@ -452,7 +537,12 @@ def send_telegram_message(
     channel: str | None = None,
     opener: Callable[..., Any] = urlopen,
 ) -> None:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+
+    token = os.environ.get(
+        "TELEGRAM_BOT_TOKEN",
+        "",
+    ).strip()
+
     if not token:
         raise BotError("TELEGRAM_BOT_TOKEN is not set.")
 
@@ -461,10 +551,14 @@ def send_telegram_message(
         or os.environ.get("TELEGRAM_CHANNEL")
         or DEFAULT_CHANNEL
     ).strip()
+
     if not target:
         raise BotError("TELEGRAM_CHANNEL cannot be empty.")
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = (
+        f"https://api.telegram.org/bot{token}/sendMessage"
+    )
+
     body = urlencode({
         "chat_id": target,
         "text": text,
@@ -474,42 +568,59 @@ def send_telegram_message(
     request = Request(
         url,
         data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
         method="POST",
     )
 
     try:
         with opener(request, timeout=15) as response:
-            response_body = response.read(MAX_TELEGRAM_RESPONSE_BYTES + 1)
+            response_body = response.read(
+                MAX_TELEGRAM_RESPONSE_BYTES + 1
+            )
+
             status = getattr(response, "status", 200)
+
     except HTTPError as exc:
         raise TelegramDeliveryError(
             f"Telegram returned HTTP {exc.code}."
         ) from None
+
     except (URLError, TimeoutError, OSError):
         raise TelegramDeliveryError(
             "Telegram could not be reached or timed out."
         ) from None
+
     except Exception as exc:
         raise TelegramDeliveryError(
             f"Telegram request failed ({type(exc).__name__})."
         ) from None
 
     if len(response_body) > MAX_TELEGRAM_RESPONSE_BYTES:
-        raise TelegramDeliveryError("Telegram returned an oversized response.")
+        raise TelegramDeliveryError(
+            "Telegram returned an oversized response."
+        )
 
     if status < 200 or status >= 300:
-        raise TelegramDeliveryError(f"Telegram returned HTTP {status}.")
+        raise TelegramDeliveryError(
+            f"Telegram returned HTTP {status}."
+        )
 
     try:
-        result = json.loads(response_body.decode("utf-8"))
+        result = json.loads(
+            response_body.decode("utf-8")
+        )
+
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise TelegramDeliveryError(
             "Telegram returned an invalid response."
         ) from None
 
     if not isinstance(result, dict) or result.get("ok") is not True:
-        raise TelegramDeliveryError("Telegram did not confirm the message.")
+        raise TelegramDeliveryError(
+            "Telegram did not confirm the message."
+        )
 
 
 # ============================================================
@@ -522,20 +633,36 @@ def run_once(
     state_path: Path = DEFAULT_STATE_PATH,
     sender: Callable[[str], None] = send_telegram_message,
 ) -> RunSummary:
-    if now is not None and (now.tzinfo is None or now.utcoffset() is None):
+
+    if now is not None and (
+        now.tzinfo is None or now.utcoffset() is None
+    ):
         raise ValueError("now must include a timezone")
 
-    run_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    calendar_events = events if events is not None else fetch_calendar()
-    reminders = due_reminders(calendar_events, run_time)
+    run_time = (
+        now or datetime.now(timezone.utc)
+    ).astimezone(timezone.utc)
 
-    sent_state = prune_state(load_state(state_path), run_time)
+    calendar_events = (
+        events if events is not None else fetch_calendar()
+    )
+
+    reminders = due_reminders(
+        calendar_events,
+        run_time,
+    )
+
+    sent_state = prune_state(
+        load_state(state_path),
+        run_time,
+    )
 
     sent_count = 0
     failed_count = 0
     duplicate_count = 0
 
     for event, lead_minutes in reminders:
+
         key = alert_key(event, lead_minutes)
 
         if key in sent_state:
@@ -543,7 +670,10 @@ def run_once(
             continue
 
         try:
-            sender(format_message(event, lead_minutes))
+            sender(
+                format_message(event, lead_minutes)
+            )
+
         except BotError as exc:
             LOGGER.warning(
                 "Alert delivery failed (%s): %s",
@@ -552,6 +682,7 @@ def run_once(
             )
             failed_count += 1
             continue
+
         except Exception as exc:
             LOGGER.warning(
                 "Alert delivery failed (%s).",
@@ -561,7 +692,12 @@ def run_once(
             continue
 
         sent_state[key] = run_time.isoformat()
-        save_state(state_path, sent_state)
+
+        save_state(
+            state_path,
+            sent_state,
+        )
+
         sent_count += 1
 
     return RunSummary(
@@ -576,10 +712,16 @@ def run_once(
 # COMMAND LINE
 # ============================================================
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(
+    argv: list[str] | None = None,
+) -> int:
+
+    parser = argparse.ArgumentParser(
+        description=__doc__
+    )
 
     modes = parser.add_mutually_exclusive_group()
+
     modes.add_argument(
         "--dry-run",
         action="store_true",
@@ -588,6 +730,7 @@ def main(argv: list[str] | None = None) -> int:
             "without sending or changing state."
         ),
     )
+
     modes.add_argument(
         "--test-message",
         action="store_true",
@@ -604,7 +747,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    if not args.dry_run and not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
+    if (
+        not args.dry_run
+        and not os.environ.get(
+            "TELEGRAM_BOT_TOKEN",
+            "",
+        ).strip()
+    ):
         LOGGER.error(
             "TELEGRAM_BOT_TOKEN is not set. "
             "Add it as a secret environment variable."
@@ -612,8 +761,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.test_message:
+
         try:
-            send_telegram_message(format_test_message())
+            send_telegram_message(
+                format_test_message()
+            )
+
         except BotError as exc:
             LOGGER.error("%s", exc)
             return 1
@@ -622,10 +775,12 @@ def main(argv: list[str] | None = None) -> int:
             "Telegram accepted the test message. "
             "Check the configured channel."
         )
+
         return 0
 
     try:
         events = fetch_calendar()
+
     except CalendarFeedError as exc:
         LOGGER.error("%s", exc)
         return 1
@@ -633,21 +788,37 @@ def main(argv: list[str] | None = None) -> int:
     current_time = datetime.now(timezone.utc)
 
     if args.dry_run:
-        reminders = due_reminders(events, current_time)
+
+        reminders = due_reminders(
+            events,
+            current_time,
+        )
+
         if not reminders:
             print(
                 f"Calendar loaded ({len(events)} supported-currency events); "
                 "no alerts are due now."
             )
+
         else:
-            print(f"Dry run: {len(reminders)} alert(s) would be sent:")
+            print(
+                f"Dry run: {len(reminders)} alert(s) would be sent:"
+            )
+
             for event, lead_minutes in reminders:
                 print("-" * 60)
-                print(format_message(event, lead_minutes))
+                print(
+                    format_message(event, lead_minutes)
+                )
+
         return 0
 
     try:
-        summary = run_once(now=current_time, events=events)
+        summary = run_once(
+            now=current_time,
+            events=events,
+        )
+
     except StateError as exc:
         LOGGER.error("%s", exc)
         return 1
