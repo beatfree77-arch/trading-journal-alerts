@@ -3,6 +3,7 @@ name: Telegram Economic Calendar Alerts
 on:
   schedule:
     - cron: "*/5 * * * *"
+
   workflow_dispatch:
     inputs:
       send_test_message:
@@ -10,6 +11,7 @@ on:
         required: false
         type: boolean
         default: false
+
       check_calendar:
         description: "Check Biquote calendar data"
         required: false
@@ -37,6 +39,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      # 1. Tests automatiques avant le lancement du bot
+      - name: Run automated tests
+        run: python -m unittest -v test_bot.py
+
+      # 2. Lancement du bot Telegram
       - name: Run economic calendar bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -52,6 +59,7 @@ jobs:
             python bot.py
           fi
 
+      # 3. Sauvegarde de l'état des alertes
       - name: Save alert state
         if: success()
         run: |
