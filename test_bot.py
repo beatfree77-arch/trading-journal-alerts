@@ -9,6 +9,7 @@ from bot import (
     due_reminders,
     run_once,
     format_message,
+    normalize_impact,
 )
 
 
@@ -148,6 +149,27 @@ class MessageFormattingTests(unittest.TestCase):
         message = format_message(event, 5)
 
         self.assertIn("Not available", message)
+
+
+class ImpactNormalizationTests(unittest.TestCase):
+
+    def test_none_becomes_holiday(self):
+        self.assertEqual(
+            normalize_impact("none"),
+            "holiday"
+        )
+
+    def test_public_holiday_becomes_holiday(self):
+        self.assertEqual(
+            normalize_impact("public holiday"),
+            "holiday"
+        )
+
+    def test_high_impact_remains_high(self):
+        self.assertEqual(
+            normalize_impact("high"),
+            "high"
+        )
 
 
 if __name__ == "__main__":
